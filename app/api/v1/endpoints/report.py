@@ -1,5 +1,6 @@
 import uuid
 
+from app.utils.api_utils import error_response, success_response
 from fastapi import APIRouter, File, UploadFile, BackgroundTasks
 from fastapi.params import Header
 
@@ -7,11 +8,18 @@ from app.db.report.crud import add_record, get_all_records, check_record_status,
 from app.db.user.crud import verify_token
 from app.models.report import TipRequest
 from app.services.report_service import ReportService
-from app.utils.api_utils import error_response, success_response
 
 router = APIRouter()
 
 def do_task_in_background(task_id, file_path):
+    """
+    This function runs in the background to process the report.
+    It updates the record status upon completion or failure.
+    """
+    update_record(task_id, "Analyzing...", True)
+    print(">>>>>>> Starting analysis for task:", task_id)
+
+    # Initialize ReportService and process the report
     try:
         report_service = ReportService(task_id, file_path)
         report_service.process_report()
@@ -21,6 +29,10 @@ def do_task_in_background(task_id, file_path):
 
 @router.get("/checkStatus")
 async def check_status(token=Header(None)):
+    """
+    Check the status of the last analysis for the user identified by the token.
+    Returns an error if no records found or if analysis is still pending.
+    """
     user = verify_token(token)
     if not user:
         return error_response("Invalid or expired token", None)
@@ -36,6 +48,10 @@ async def check_status(token=Header(None)):
 
 @router.post("/uploadReport")
 async def upload_report(background_tasks: BackgroundTasks, token=Header(None), file: UploadFile = File(...)):
+    """
+    Upload a report file and start analysis in the background.
+    Returns an error if the user is invalid or if another analysis is already in progress.
+    """
     user = verify_token(token)
     if not user:
         return error_response("Invalid or expired token", None)
@@ -59,6 +75,10 @@ async def upload_report(background_tasks: BackgroundTasks, token=Header(None), f
 
 @router.get("/getRecords")
 async def read_all_my_records(token=Header(None)):
+    """
+    Retrieve all records for the user identified by the token.
+    Returns an error if the user is invalid or if no records found.
+    """
     user = verify_token(token)
     if not user:
         return error_response("Invalid or expired token", None)
@@ -68,11 +88,14 @@ async def read_all_my_records(token=Header(None)):
 
 @router.post("/getTips")
 async def tips(request: TipRequest, token=Header(None)):
-    print(token)
+    """
+    Generate health tips based on the report section provided in the request.
+    The user must be verified by the token.
+    Returns an error if the user is invalid or if the request is malformed.
+    """
     user = verify_token(token)
     if not user:
         return error_response("Invalid or expired token", None)
 
     tips = ReportService.get_tips(test_name=request.test_name, summary=request.summary, parameters=request.parameters)
-    print(tips)
     return success_response("Here are tips", tips["tips"])
